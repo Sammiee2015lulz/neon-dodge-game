@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Dodge - Fun Browser Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a12;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #00ffcc;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px #00ffcc;
+            background: #000;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            pointer-events: none;
+        }
+        #score, #highScore {
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ffcc;
+            margin: 5px;
+        }
+        #message {
+            font-size: 28px;
+            margin-top: 10px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="score">Score: 0</div>
+        <div id="highScore">High Score: 0</div>
+        <div id="message">Press SPACE or Click to Start!</div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const messageEl = document.getElementById('message');
+
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('neonDodgeHigh') || 0;
+        highScoreEl.textContent = `High Score: ${highScore}`;
+
+        // Player
+        const player = {
+            x: canvas.width / 2 - 15,
+            y: canvas.height - 80,
+            width: 30,
+            height: 30,
+            speed: 8,
+            color: '#00ffcc'
+        };
+
+        // Enemies
+        let enemies = [];
+        let enemySpeed = 3;
+        let spawnRate = 60; // frames
+        let frameCount = 0;
+
+        // Input
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        canvas.addEventListener('click', startGame);
+        window.addEventListener('keydown', e => {
+            if (e.code === 'Space') startGame();
+        });
+
+        function startGame() {
+            if (gameRunning) return;
+            gameRunning = true;
+            score = 0;
+            enemies = [];
+            enemySpeed = 3;
+            spawnRate = 60;
+            frameCount = 0;
+            player.x = canvas.width / 2 - 15;
+            messageEl.classList.add('hidden');
+            gameLoop();
+        }
+
+        function spawnEnemy() {
+            const size = 20 + Math.random() * 20;
+            enemies.push({
+                x: Math.random() * (canvas.width - size),
+                y: -size,
+                size: size,
+                speed: enemySpeed + Math.random() * 2,
+                color: `hsl(${Math.random() * 360}, 100%, 60%)`
+            });
+        }
+
+        function update() {
+            // Player movement
+            if (keys['ArrowLeft'] || keys['KeyA']) player.x -= player.speed;
+            if (keys['ArrowRight'] || keys['KeyD']) player.x += player.speed;
+            if (keys['ArrowUp'] || keys['KeyW']) player.y -= player.speed;
+            if (keys['ArrowDown'] || keys['KeyS']) player.y += player.speed;
+
+            // Bounds
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+            player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+
+            // Spawn enemies
+            frameCount++;
+            if (frameCount % spawnRate === 0) {
+                spawnEnemy();
+                if (spawnRate > 20) spawnRate -= 1;
+            }
+
+            // Update enemies
+            enemies.forEach(enemy => {
+                enemy.y += enemy.speed;
+            });
+
+            // Remove off-screen
+            enemies = enemies.filter(e => e.y < canvas.height + 50);
+
+            // Collision
+            for (let enemy of enemies) {
+                if (player.x < enemy.x + enemy.size &&
+                    player.x + player.width > enemy.x &&
+                    player.y < enemy.y + enemy.size &&
+                    player.y + player.height > enemy.y) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            // Score
+            score++;
+            if (score % 100 === 0) enemySpeed += 0.5;
+            scoreEl.textContent = `Score: ${score}`;
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Grid lines for neon feel
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvas.height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < canvas.height; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+
+            // Player with glow
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.shadowBlur = 0;
+
+            // Enemies
+            enemies.forEach(enemy => {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = enemy.color;
+                ctx.fillStyle = enemy.color;
+                ctx.beginPath();
+                ctx.arc(enemy.x + enemy.size/2, enemy.y + enemy.size/2, enemy.size/2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonDodgeHigh', highScore);
+                highScoreEl.textContent = `High Score: ${highScore}`;
+            }
+            messageEl.textContent = `Game Over! Score: ${score} | Press SPACE to Restart`;
+            messageEl.classList.remove('hidden');
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>
